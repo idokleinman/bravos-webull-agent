@@ -187,7 +187,7 @@ The kill switch works because the Lambda reads SSM on **every invocation** — n
 | Layer | How | Safe while live? |
 |---|---|---|
 | **1 Unit/integration** | `make test` (96 tests, no AWS/network) | n/a |
-| **2 Injection** | `aws lambda invoke --function-name <FunctionName> --region us-west-2 --cli-binary-format raw-in-base64-out --payload '{"test_signal":"Aggressive","message_id":"uniq-123"}' /tmp/out.json` — use a **unique** `message_id` each run. `FunctionName` is in the CloudFormation stack outputs. |
+| **2 Injection** | Get your function name from CloudFormation outputs (`aws cloudformation describe-stacks --stack-name bravos-webull-agent --region us-west-2 --query 'Stacks[0].Outputs'`), then: `aws lambda invoke --function-name <your-function-name> --region us-west-2 --cli-binary-format raw-in-base64-out --payload '{"test_signal":"Aggressive","message_id":"uniq-123"}' /tmp/out.json && cat /tmp/out.json` — use a **unique** `message_id` each run. |
 | **3 Real Gmail, relaxed sender** | set `TEST_EMAIL_MODE=true` + `TEST_SENDER=you@…`, email yourself the trigger sentence | Dry-run only — the agent refuses to start if `TEST_EMAIL_MODE` is set while `TRADING_ENABLED=true`. |
 | **4 Real Bravos email + dry-run** | final check before arming | — |
 
