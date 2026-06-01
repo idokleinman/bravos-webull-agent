@@ -14,7 +14,8 @@ def test_test_email_mode_refuses_to_arm():
 def test_bad_webull_env_rejected():
     with pytest.raises(RuntimeError):
         Config(webull_env="staging").validate()
-    Config(webull_env="uat").validate()
+    with pytest.raises(RuntimeError):
+        Config(webull_env="uat").validate()
     Config(webull_env="prod").validate()
 
 

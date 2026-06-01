@@ -123,7 +123,7 @@ class Config:
     )
 
     # Webull.
-    webull_env: str = field(default_factory=lambda: os.environ.get("WEBULL_ENV", "uat"))
+    webull_env: str = field(default_factory=lambda: os.environ.get("WEBULL_ENV", "prod"))
     webull_region_id: str = field(
         default_factory=lambda: os.environ.get("WEBULL_REGION_ID", "us")
     )
