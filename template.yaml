@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Bravos Model Signal agent — hourly Gmail poll → Telegram alert → (gated) Webull
+  reconcile. Off & dry by default. Steady-state cost ≈ $0 (free tier).
+
+Parameters:
+  SsmPrefix:
+    Type: String
+    Default: /bravos-webull/prod
+    Description: SSM path prefix holding SecureString secrets (synced from .env).
+  TradingEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Master arm switch. Leave false until you have verified dry-run output.
+  DryRun:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: When true, logs/sends fully-formed orders but places nothing.
+  TargetNotional:
+    Type: String
+    Default: "11000"
+  MaxOrderNotional:
+    Type: String
+    Default: "12000"
+  StopPctQqq:
+    Type: String
+    Default: "0.10"
+  StopPctTqqq:
+    Type: String
+    Default: "0.20"
+  ConfirmWindowMinutes:
+    Type: String
+    Default: "10"
+  WebullEnv:
+    Type: String
+    Default: "prod"
+    AllowedValues: ["prod"]
+  WebullRegionId:
+    Type: String
+    Default: "us"
+  WebullAccountId:
+    Type: String
+    Default: "8PHS8R40VL7GC7G9LJTK62DEB9"
+  TestEmailMode:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  TestSender:
+    Type: String
+    Default: ""
+  AlarmEmail:
+    Type: String
+    Default: ""
+    Description: Optional email subscribed to the error-alarm SNS topic.
+
+Conditions:
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 256
+    Timeout: 720   # veto window (≤600s) + fill/exec headroom
+    Architectures: [arm64]
+
+Resources:
+  StateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  SignalFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: src/
+      Handler: handler.lambda_handler
+      Environment:
+        Variables:
+          SSM_PREFIX: !Ref SsmPrefix
+          STATE_BUCKET: !Ref StateBucket
+          TRADING_ENABLED: !Ref TradingEnabled
+          DRY_RUN: !Ref DryRun
+          TARGET_NOTIONAL: !Ref TargetNotional
+          MAX_ORDER_NOTIONAL: !Ref MaxOrderNotional
+          STOP_PCT_QQQ: !Ref StopPctQqq
+          STOP_PCT_TQQQ: !Ref StopPctTqqq
+          CONFIRM_WINDOW_MINUTES: !Ref ConfirmWindowMinutes
+          WEBULL_ENV: !Ref WebullEnv
+          WEBULL_REGION_ID: !Ref WebullRegionId
+          WEBULL_ACCOUNT_ID: !Ref WebullAccountId
+          TEST_EMAIL_MODE: !Ref TestEmailMode
+          TEST_SENDER: !Ref TestSender
+      Policies:
+        # Read only this object in the state bucket.
+        - Statement:
+            - Sid: StateObjectRW
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub "arn:aws:s3:::${StateBucket}/state.json"
+            - Sid: StateS3List
+              Effect: Allow
+              Action: [s3:ListBucket]
+              Resource: !Sub "arn:aws:s3:::${StateBucket}"
+        # Read only secrets under our prefix.
+        - Statement:
+            - Sid: SsmReadPrefix
+              Effect: Allow
+              Action: [ssm:GetParameter, ssm:GetParametersByPath]
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*"
+        # Decrypt SecureString values (default SSM-managed KMS key).
+        - Statement:
+            - Sid: KmsDecryptSsm
+              Effect: Allow
+              Action: [kms:Decrypt]
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  "kms:ViaService": !Sub "ssm.${AWS::Region}.amazonaws.com"
+      Events:
+        Hourly:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: "rate(1 hour)"
+            Description: Hourly Bravos signal poll (24/7; trading still RTH-gated in code).
+
+  ErrorTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Bravos agent errors
+
+  ErrorEmailSub:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmEmail
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+      TopicArn: !Ref ErrorTopic
+
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-function-errors"
+      AlarmDescription: Lambda raised an unhandled error (e.g. expired Gmail/Webull auth).
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SignalFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref ErrorTopic]
+
+Outputs:
+  FunctionName:
+    Value: !Ref SignalFunction
+    Description: Invoke this for the Layer-2 smoke test.
+  StateBucketName:
+    Value: !Ref StateBucket
+  ErrorTopicArn:
+    Value: !Ref ErrorTopic

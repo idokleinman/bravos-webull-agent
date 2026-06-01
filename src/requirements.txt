@@ -1,0 +1,12 @@
+# Lambda runtime dependencies (SAM builds from this file).
+# boto3 is already present in the AWS Lambda Python 3.12 runtime — not listed here.
+google-api-python-client>=2.0
+google-auth>=2.0
+google-auth-oauthlib>=1.0
+requests>=2.31
+webull-python-sdk-core>=0.1.6
+webull-python-sdk-trade>=0.1.6
+webull-python-sdk-mdata>=0.1.6
+# grpcio/grpcio-tools are transitive deps of the webull SDK but are not installed —
+# the Lambda only uses the REST path (webullsdkmdata.quotes.market_data), never gRPC.
+# See src/Makefile build-SignalFunction for the install strategy.
