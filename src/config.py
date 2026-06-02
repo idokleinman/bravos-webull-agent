@@ -42,7 +42,7 @@ BRAVOS_SENDER = "info@bravosresearch.com"
 SIGNAL_REGEX = (
     r"Model\s+Signal\s*\(\s*(Cash|Moderate|Aggressive)\s*\)\s*has\s+been\s+published"
 )
-GMAIL_QUERY = f"from:{BRAVOS_SENDER} newer_than:2d"
+GMAIL_QUERY = f'from:{BRAVOS_SENDER} subject:"Model Signal" newer_than:2d'
 
 # Email-auth verdicts that must ALL be present (anti-spoofing, the primary control).
 REQUIRED_AUTH_RESULTS = ("dkim", "spf", "dmarc")

@@ -93,7 +93,14 @@ def run(event: dict, deps: Deps) -> dict:
                 return {**result, "action": "auth_failed", "reason": reason, "message_id": message_id}
         signal = parse_signal(msg.body)
         if signal is None:
-            deps.notifier.send(messages.rejected("unrecognized Bravos email"))
+            # Load state to dedup — without this the same unrecognised email would
+            # fire a Telegram alert on every hourly run until it ages out of the query.
+            state = deps.state_store.load()
+            if message_id != state.last_rejected_message_id:
+                deps.notifier.send(messages.rejected("unrecognized Bravos email"))
+                state.last_rejected_message_id = message_id
+                state.touch()
+                deps.state_store.save(state)
             return {**result, "action": "unparsed", "message_id": message_id}
 
     result["signal"] = signal

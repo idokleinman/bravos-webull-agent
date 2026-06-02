@@ -19,6 +19,7 @@ class State:
     last_alerted_message_id: str | None = None
     last_executed_message_id: str | None = None
     last_skipped_message_id: str | None = None
+    last_rejected_message_id: str | None = None
     last_signal: str | None = None
     last_action_at: str | None = None
     audit: list[dict] = field(default_factory=list)
@@ -52,6 +53,7 @@ class State:
             last_alerted_message_id=data.get("last_alerted_message_id"),
             last_executed_message_id=data.get("last_executed_message_id"),
             last_skipped_message_id=data.get("last_skipped_message_id"),
+            last_rejected_message_id=data.get("last_rejected_message_id"),
             last_signal=data.get("last_signal"),
             last_action_at=data.get("last_action_at"),
             audit=data.get("audit", []),
